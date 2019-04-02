@@ -1,0 +1,42 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.1.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 111ab0b06d24fe58b042eed7f0096116b0d10a09710343e9c40df5771f21bff9
+
+name:           MindWave
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/isovector/polysemy#readme>
+homepage:       https://github.com/isovector/MindWave#readme
+bug-reports:    https://github.com/isovector/MindWave/issues
+author:         Sandy Maguire
+maintainer:     sandy@sandymaguire.me
+copyright:      2019 Sandy Maguire
+license:        BSD3
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/isovector/MindWave
+
+executable MindWave-exe
+  main-is: Main.hs
+  other-modules:
+      MindWaveConnection
+      Paths_MindWave
+  hs-source-dirs:
+      src
+  ghc-options: -O2 -Wall
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , bytestring
+    , mtl
+    , serialport
+    , transformers
+  default-language: Haskell2010

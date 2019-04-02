@@ -27,17 +27,17 @@ mindWaveDev = "/dev/ttyUSB0"
 mindWaveSerialSettings :: SP.SerialPortSettings
 mindWaveSerialSettings = SP.defaultSerialSettings { SP.commSpeed = SP.CS115200 }
 
--- | Sends the "magic word" for starting a connection to the MindWave. 
+-- | Sends the "magic word" for starting a connection to the MindWave.
 --   Telling the MindWave to start sending data.
 sendConnect :: Word8 -> Word8 -> SerialPort -> IO Int
 sendConnect a b sp = SP.send sp (B.pack [0xC0,a,b])
 
--- | Sends the "magic word" for ending a connection to the MindWave. 
+-- | Sends the "magic word" for ending a connection to the MindWave.
 --   Telling the MindWave to stop sending data.
 sendDisconnect :: SerialPort -> IO Int
 sendDisconnect sp = SP.send sp (B.pack [0xC1])
 
--- | Sends the "magic word" for starting a connection to the MindWave. 
+-- | Sends the "magic word" for starting a connection to the MindWave.
 --   Telling the MindWave to start sending data.
 sendAutoConnect :: SerialPort -> IO Int
 sendAutoConnect sp = SP.send sp (B.pack [0xC2])
@@ -48,7 +48,7 @@ openMindWave = do
  print $ "Opening MindWave on serial port " ++ mindWaveDev
  sp <- SP.openSerial mindWaveDev mindWaveSerialSettings
  sendAutoConnect sp
- return sp 
+ return sp
 
 -- | Closes a connection to a MindWave on the default serial port location
 closeMindWave :: SerialPort -> IO ()
@@ -70,7 +70,7 @@ getSerialPort = do
 -- | A bracketing function to that first connects to the MindWave, performs
 --   the given action, and finally disconnects from the MindWave
 withMindWave :: MindWave a -> IO a
-withMindWave mwa = Ex.bracket openMindWave closeMindWave $ \sp -> 
+withMindWave mwa = Ex.bracket openMindWave closeMindWave $ \sp ->
  evalStateT mwa (sp,initialMindWaveInfo)
 
 -- | A standalone IO action for disconnecting from the MindWave.
@@ -122,8 +122,8 @@ readMindWavePacket = do
 readPayload :: MindWave MindWavePacket
 readPayload = do
   datalength <- readByte
-  case (datalength > 169) of 
-    True -> readMindWavePacket 
+  case (datalength > 169) of
+    True -> readMindWavePacket
     False -> do
       pl <- readBytes datalength
       cs <- readByte
@@ -167,10 +167,10 @@ parseMindWavePacket (MindWavePacket pl) = (MindWaveDataRow excode code value):pa
  where
   (excode,pl') = countExcodes pl 0
   (code,pl'') = (head pl', tail pl')
-  (value, rest) = if code > 0x7F 
-                   then (take (fromIntegral $ head pl'') (tail pl''), drop (fromIntegral $ head pl'') (tail pl'')) 
-                   else ([head pl''], tail pl'') 
-   
+  (value, rest) = if code > 0x7F
+                   then (take (fromIntegral $ head pl'') (tail pl''), drop (fromIntegral $ head pl'') (tail pl''))
+                   else ([head pl''], tail pl'')
+
 -- | A helper function for counting the number of "Excodes" at the begining of a list of Word8
 countExcodes :: [Word8] -> Int -> (Int, [Word8])
 countExcodes (0x55:bs) n = countExcodes bs (n+1)
@@ -179,7 +179,7 @@ countExcodes bs n = (n, bs)
 {-
 prettyPrintData :: MindWave ()
 prettyPrintData = sequence_ $ repeat $ do
-  mwp <- readMindWavePacket 
+  mwp <- readMindWavePacket
   lift $ print (map prettyPrint (parseMindWavePacket mwp))
 
 printData :: MindWave ()
@@ -194,7 +194,7 @@ main :: IO ()
 main = withMindWave printData
 
 prettyPrint :: MindWaveDataRow -> String
-prettyPrint mwp@(MindWaveDataRow excode code value) = 
+prettyPrint mwp@(MindWaveDataRow excode code value) =
  case excode of
   0 -> case code of
         0x02 -> "POOR_SIGNAL Quality: " ++ show (head value)
@@ -204,7 +204,7 @@ prettyPrint mwp@(MindWaveDataRow excode code value) =
         0x55 -> "EXCODE " ++ show value
 	0x80 -> "RAW: " ++ hexValue 2 value
 	0x83 -> "ASIC_EEG_POWER: " ++ eegValue value
-	0xAA -> "SYNC " ++ show value 
+	0xAA -> "SYNC " ++ show value
 	0xD0 -> "Connected to Headset " ++ hexValue 2 value
         0xD1 -> case (length value) of
                  0 -> "No Headsets found"
@@ -223,7 +223,7 @@ prettyPrint mwp@(MindWaveDataRow excode code value) =
 hexValue :: Int -> [Word8] -> String
 hexValue n ws = "0x" ++ concat (map (\w -> drop 2 (showWord8 w)) (take n ws))
 
-{- 
+{-
 eegValue :: [Word8] -> String
 eegValue [d1,d2,d3,t1,t2,t3,la1,la2,la3,ha1,ha2,ha3,lb1,lb2,lb3,hb1,hb2,hb3,lg1,lg2,lg3,mg1,mg2,mg3] = d ++ t ++ la ++ ha ++ lb ++ hb ++ lg ++ mg
  where
@@ -234,33 +234,33 @@ eegValue [d1,d2,d3,t1,t2,t3,la1,la2,la3,ha1,ha2,ha3,lb1,lb2,lb3,hb1,hb2,hb3,lg1,
   lb = "low-beta:" ++ hexValue 3 [lb1,lb2,lb3] ++ " "
   hb = "high-beta:" ++ hexValue 3 [hb1,hb2,hb3] ++ " "
   lg = "low-gamma:" ++ hexValue 3 [lg1,lg2,lg3] ++ " "
-  mg = "mid-gamma:" ++ hexValue 3 [mg1,mg2,mg3] ++ " " 
+  mg = "mid-gamma:" ++ hexValue 3 [mg1,mg2,mg3] ++ " "
 eegValue ws = "error " ++ show ws
 -}
 
 -- | MindWaveInfo consits of the data that is sent from the MindWave
-data MindWaveInfo = MindWaveInfo {
-  dongle_status :: String,
-  last_message :: String,
-  poor_signal :: String,
-  attention :: String,
-  meditation :: String,
-  blink_strength :: String,
-  raw_value :: String,
-  delta :: String,
-  theta :: String,
-  low_alpha :: String,
-  high_alpha :: String,
-  low_beta :: String,
-  high_beta :: String,
-  low_gamma :: String,
-  mid_gamma :: String,
-  unknown_code :: String
-}
+data MindWaveInfo = MindWaveInfo
+  { dongle_status  :: String
+  , last_message   :: String
+  , poor_signal    :: String
+  , attention      :: String
+  , meditation     :: String
+  , blink_strength :: String
+  , raw_value      :: String
+  , delta          :: String
+  , theta          :: String
+  , low_alpha      :: String
+  , high_alpha     :: String
+  , low_beta       :: String
+  , high_beta      :: String
+  , low_gamma      :: String
+  , mid_gamma      :: String
+  , unknown_code   :: String
+  } deriving Show
 
 {-
 instance Show MindWaveInfo where
- show mwi =  
+ show mwi =
   "dongle_status:  " ++ dongle_status mwi ++ "\n" ++
   "last_message:   " ++ last_message mwi ++ "\n" ++
   "poor_signal:    " ++ poor_signal mwi ++ "\n" ++
@@ -274,7 +274,7 @@ instance Show MindWaveInfo where
   "high_alpha:     " ++ high_alpha mwi ++ "\n" ++
   "low_beta:       " ++ low_beta mwi ++ "\n" ++
   "high_beta:      " ++ high_beta mwi ++ "\n" ++
-  "low_gamma:      " ++ low_gamma mwi ++ "\n" ++ 
+  "low_gamma:      " ++ low_gamma mwi ++ "\n" ++
   "mid_gamma:      " ++ mid_gamma mwi ++ "\n" ++
   "unknown_code:   " ++ unknown_code mwi ++ "\n"
 -}
@@ -310,7 +310,7 @@ updateState mwp@(MindWaveDataRow excode code value) mwi =
 -- | A helper function for extracting EEG specific values from the MindWave
 updateEegValue :: [Word8] -> MindWaveInfo -> MindWaveInfo
 updateEegValue [d1,d2,d3,t1,t2,t3,la1,la2,la3,ha1,ha2,ha3,lb1,lb2,lb3,hb1,hb2,hb3,lg1,lg2,lg3,mg1,mg2,mg3] mwi = mwi {
- delta = d, 
+ delta = d,
  theta = t,
  low_alpha = la,
  high_alpha = ha,
@@ -327,7 +327,7 @@ updateEegValue [d1,d2,d3,t1,t2,t3,la1,la2,la3,ha1,ha2,ha3,lb1,lb2,lb3,hb1,hb2,hb
   lb = hexValue 3 [lb1,lb2,lb3]
   hb = hexValue 3 [hb1,hb2,hb3]
   lg = hexValue 3 [lg1,lg2,lg3]
-  mg = hexValue 3 [mg1,mg2,mg3] 
+  mg = hexValue 3 [mg1,mg2,mg3]
 updateEegValue ws mwi = mwi { unknown_code = show ws }
 
 -- | Store MindWaveInfo in an IORef, and continually update it from the MindWave
