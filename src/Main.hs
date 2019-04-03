@@ -2,26 +2,24 @@
 
 module Main where
 
+import qualified Data.ByteString.Char8 as B
 import           Data.Foldable
 import           Data.Time
-import           Data.Time.LocalTime
 import qualified Streaming.Prelude as S
 import           StreamingMindWave
-import           Text.Printf
 
 
-dumpHeader :: IO ()
+dumpHeader :: IO String
 dumpHeader = do
-  tz <- getCurrentTimeZone
+  tz   <- getCurrentTimeZone
   time <- getCurrentTime
-  putStrLn $ formatTime defaultTimeLocale "%F %X" (utcToLocalTime tz time)
+  pure $ formatTime defaultTimeLocale "%F %X" (utcToLocalTime tz time)
 
 
 main :: IO ()
 main = S.mapM_ (\a -> do
-         dumpHeader
-         print a
-         putStrLn ""
+         header <- dumpHeader
+         B.appendFile "/home/sandy/brainwaves" $ B.pack $ header ++ show a ++ "\n"
        )
      . pluckEvery 15
      . S.map fold
