@@ -26,6 +26,8 @@ dependencies:
 - bytestring
 - serialport
 - ansi-terminal
+- lens
+- generic-lens
 
 executables:
   MindWave-exe:
