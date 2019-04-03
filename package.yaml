@@ -28,6 +28,7 @@ dependencies:
 - ansi-terminal
 - lens
 - generic-lens
+- streaming
 
 executables:
   MindWave-exe:

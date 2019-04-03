@@ -5,12 +5,15 @@
 
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module MindWaveConnection (
- readMind,
- initialMindWaveInfo,
- MindWaveInfo (..),
- disconnect
-) where
+module MindWaveConnection
+  ( readMind
+  , initialMindWaveInfo
+  , MindWaveInfo (..)
+  , Readings (..)
+  , AsicEegPower (..)
+  , ESense (..)
+  , disconnect
+  ) where
 
 import qualified Control.Exception as Ex
 import           Control.Lens
@@ -60,7 +63,7 @@ closeMindWave sp = do
 
 -- | A type synonym for a StateT containing the serial port in use, and the
 --   latest info from the MindWave, on top of the IO Monad
-type MindWave a = StateT (SerialPort,MindWaveInfo) IO a
+type MindWave a = StateT (SerialPort, MindWaveInfo) IO a
 
 -- | A getter function for the SerialPort
 getSerialPort :: MindWave SerialPort
