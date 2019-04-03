@@ -1,7 +1,11 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia        #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE OverloadedLabels   #-}
+{-# LANGUAGE TypeApplications   #-}
 
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
@@ -15,6 +19,8 @@ module MindWaveConnection
   , disconnect
   ) where
 
+import Debug.Trace
+import           Average
 import qualified Control.Exception as Ex
 import           Control.Lens
 import           Control.Monad.State
@@ -25,8 +31,10 @@ import           Data.Generics.Labels ()
 import           Data.IORef
 import           Data.Word
 import           GHC.Generics
+import           Generic.Data (Generically (..))
 import           System.Hardware.Serialport (SerialPort)
 import qualified System.Hardware.Serialport as SP
+
 
 -- | The default location the MindWave serial port is mounted (on my linux system)
 mindWaveDev :: FilePath
@@ -186,8 +194,8 @@ buildWord32 b c d =
 
 -- | MindWaveInfo consits of the data that is sent from the MindWave
 data MindWaveInfo = MindWaveInfo
-  { dongle_status  :: String
-  , last_message   :: String
+  { dongle_status  :: !String
+  , last_message   :: !String
   , poor_signal    :: Word8
   , blink_strength :: Word8
   , readings       :: Readings
@@ -195,31 +203,44 @@ data MindWaveInfo = MindWaveInfo
   } deriving (Show, Generic)
 
 data Readings = Readings
-  { raw_value      :: Float
+  { raw_value      :: Average Float
   , esense         :: ESense
   , asic_eeg_power :: AsicEegPower
-  } deriving (Show, Generic)
+  }
+  deriving (Show, Generic)
+  deriving (Monoid, Semigroup) via (Generically Readings)
 
 data ESense = ESense
-  { attention      :: Word8
-  , meditation     :: Word8
-  } deriving (Show, Generic)
+  { attention      :: Average Int
+  , meditation     :: Average Int
+  }
+  deriving (Show, Generic)
+  deriving (Monoid, Semigroup) via (Generically ESense)
 
 data AsicEegPower = AsicEegPower
-  { delta          :: Float
-  , theta          :: Float
-  , low_alpha      :: Float
-  , high_alpha     :: Float
-  , low_beta       :: Float
-  , high_beta      :: Float
-  , low_gamma      :: Float
-  , mid_gamma      :: Float
+  { delta          :: Average Float
+  , theta          :: Average Float
+  , low_alpha      :: Average Float
+  , high_alpha     :: Average Float
+  , low_beta       :: Average Float
+  , high_beta      :: Average Float
+  , low_gamma      :: Average Float
+  , mid_gamma      :: Average Float
   } deriving (Show, Generic)
+  deriving (Monoid, Semigroup) via (Generically AsicEegPower)
+
 
 -- | Before connecting to the MindWave, we have no information.
 initialMindWaveInfo :: MindWaveInfo
 initialMindWaveInfo =
-  MindWaveInfo "" "" 0 0 (Readings 0 (ESense 0 0) (AsicEegPower 0 0 0 0 0 0 0 0)) ""
+  MindWaveInfo "" "" 0 0
+    (Readings
+      (toAverage 0)
+      (ESense (toAverage 0) (toAverage 0))
+      (AsicEegPower (toAverage 0) (toAverage 0) (toAverage 0)
+                    (toAverage 0) (toAverage 0) (toAverage 0)
+                    (toAverage 0) (toAverage 0)))
+    ""
 
 -- | For any data row we recieve, we can update the info accordingly
 updateState :: MindWaveDataRow -> MindWaveInfo -> MindWaveInfo
@@ -228,26 +249,28 @@ updateState mwp@(MindWaveDataRow excode code value) mwi =
    0 ->
      case code of
        0x02 -> #poor_signal .~ head value
-       0x05 -> #readings . #esense . #meditation .~ head value
-       0x04 -> #readings . #esense . #attention .~ head value
+       0x05 -> #readings . #esense . #meditation
+                 .~ toAverage (fromIntegral $ head value)
+       0x04 -> #readings . #esense . #attention
+                  .~ toAverage (fromIntegral $ head value)
        0x16 -> #blink_strength .~ head value
        0x80 ->
          case value of
-           [a, b] -> #readings . #raw_value .~ fromIntegral (buildWord32 0 a b)
-           _ -> #last_message .~ "bad 0x80"
+           [a, b] -> #readings . #raw_value .~ toAverage (fromIntegral (buildWord32 0 a b))
+           _ -> #last_message .~ traceId ("bad 0x80")
        0x83 -> #readings . #asic_eeg_power .~ parseAsicEeg value
-       0xD0 -> #dongle_status .~ "Connected to Headset" ++ hexValue 2 value
+       0xD0 -> #dongle_status .~ traceId ("Connected to Headset" ++ hexValue 2 value)
        0xD1 ->
          case (length value) of
-           0 -> #last_message .~ "No Headsets found                 "
-           2 -> #last_message .~ "Headset " ++ hexValue 2 value ++ " not found"
+           0 -> #last_message .~ traceId ("No Headsets found")
+           2 -> #last_message .~ traceId ("Headset " ++ hexValue 2 value ++ " not found")
            _ -> #unknown_code .~ show mwp
-       0xD2 -> #last_message .~ "Disconnected from Headset " ++ hexValue 2 value
-       0xD3 -> #last_message .~ "Request Denied"
+       0xD2 -> #last_message .~ traceId ("Disconnected from Headset " ++ hexValue 2 value)
+       0xD3 -> #last_message .~ traceId ("Request Denied")
        0xD4 ->
          case (head value) of
-           0 -> #dongle_status .~ "Dongle in Standy Mode"
-           _ -> #dongle_status .~ "Scanning for Headset "
+           0 -> #dongle_status .~ traceId ("Dongle in Standy Mode")
+           _ -> #dongle_status .~ traceId ("Scanning for Headset ")
        _ -> #unknown_code .~ show mwp
    _ -> #unknown_code .~ show mwp
 
@@ -274,7 +297,7 @@ parseAsicEeg
       , mid_gamma  = buildLog mg1 mg2 mg3
       }
  where
-  buildLog a b c = log $ fromIntegral $ buildWord32 a b c
+  buildLog a b c = toAverage $ log $ fromIntegral $ buildWord32 a b c
 parseAsicEeg _ = error "bad bad boy"
 
 -- | Store MindWaveInfo in an IORef, and continually update it from the MindWave

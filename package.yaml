@@ -29,6 +29,9 @@ dependencies:
 - lens
 - generic-lens
 - streaming
+- one-liner
+- generic-data
+- time
 
 executables:
   MindWave-exe:
