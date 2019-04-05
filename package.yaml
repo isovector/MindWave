@@ -32,6 +32,8 @@ dependencies:
 - one-liner
 - generic-data
 - time
+- MissingH
+- aeson
 
 executables:
   MindWave-exe:

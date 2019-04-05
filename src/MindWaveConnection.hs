@@ -1,10 +1,12 @@
 {-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveFunctor      #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia        #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE OverloadedLabels   #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
 
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
@@ -19,17 +21,19 @@ module MindWaveConnection
   , disconnect
   ) where
 
-import Debug.Trace
+import GHC.Exts
 import           Average
 import qualified Control.Exception as Ex
 import           Control.Lens
 import           Control.Monad.State
+import           Data.Aeson
 import           Data.Bits
 import qualified Data.ByteString as B
 import           Data.Char (intToDigit, toUpper)
 import           Data.Generics.Labels ()
 import           Data.IORef
 import           Data.Word
+import           Debug.Trace
 import           GHC.Generics
 import           Generic.Data (Generically (..))
 import           System.Hardware.Serialport (SerialPort)
@@ -57,7 +61,7 @@ sendAutoConnect sp = SP.send sp (B.pack [0xC2])
 -- | Opens a connection to a MindWave on the default serial port location
 openMindWave :: IO SerialPort
 openMindWave = do
- print $ "Opening MindWave on serial port " ++ mindWaveDev
+ putStrLn $ "Opening MindWave on serial port " ++ mindWaveDev
  sp <- SP.openSerial mindWaveDev mindWaveSerialSettings
  sendAutoConnect sp
  return sp
@@ -65,7 +69,7 @@ openMindWave = do
 -- | Closes a connection to a MindWave on the default serial port location
 closeMindWave :: SerialPort -> IO ()
 closeMindWave sp = do
- print $ "Disconnecting from MindWave."
+ putStrLn $ "Disconnecting from MindWave."
  sendDisconnect sp
  SP.closeSerial sp
 
@@ -90,7 +94,7 @@ withMindWave mwa = Ex.bracket openMindWave closeMindWave $ \sp ->
 disconnect :: IO ()
 disconnect = do
  sp <- SP.openSerial mindWaveDev mindWaveSerialSettings
- print $ "Disconnecting from MindWave."
+ putStrLn $ "Disconnecting from MindWave."
  sendDisconnect sp
  SP.closeSerial sp
 
@@ -210,11 +214,19 @@ data Readings = Readings
   deriving (Show, Generic)
   deriving (Monoid, Semigroup) via (Generically Readings)
 
+instance ToJSON Readings where
+  toJSON (Readings r e a) =
+    let Object e' = toJSON e
+        Object a' = toJSON a
+     in Object $ e'
+              <> a'
+              <> fromList [("raw_value", toJSON r)]
+
 data ESense = ESense
   { attention      :: Average Int
   , meditation     :: Average Int
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, ToJSON)
   deriving (Monoid, Semigroup) via (Generically ESense)
 
 data AsicEegPower = AsicEegPower
@@ -226,7 +238,7 @@ data AsicEegPower = AsicEegPower
   , high_beta      :: Average Float
   , low_gamma      :: Average Float
   , mid_gamma      :: Average Float
-  } deriving (Show, Generic)
+  } deriving (Show, Generic, ToJSON)
   deriving (Monoid, Semigroup) via (Generically AsicEegPower)
 
 

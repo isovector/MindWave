@@ -5,6 +5,7 @@
 
 module Average where
 
+import Data.Aeson
 import GHC.Generics
 import Generics.OneLiner
 
@@ -22,6 +23,13 @@ instance Num a => Semigroup (Average a) where
 
 instance Num a => Monoid (Average a) where
   mempty = Average 0 0
+
+instance ToJSON (Average Float) where
+  toJSON = toJSON . getAverage (/)
+
+instance ToJSON (Average Int) where
+  toJSON = toJSON . getAverage div
+
 
 toAverage :: Num a => a -> Average a
 toAverage n = Average n 1
