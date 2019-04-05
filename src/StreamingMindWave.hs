@@ -1,5 +1,6 @@
 module StreamingMindWave where
 
+import           Average
 import           Control.Concurrent
 import           Control.Monad
 import           Data.IORef
@@ -7,7 +8,7 @@ import           MindWaveConnection
 import           Streaming
 import qualified Streaming.Prelude as S
 
-mindWaveStream :: S.Stream (S.Of Readings) IO ()
+mindWaveStream :: S.Stream (S.Of (Readings Average)) IO ()
 mindWaveStream = do
   ref <- liftIO $ do
     ref <- newIORef initialMindWaveInfo

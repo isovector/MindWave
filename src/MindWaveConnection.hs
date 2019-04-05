@@ -1,30 +1,42 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveFunctor      #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DerivingVia        #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE OverloadedLabels   #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module MindWaveConnection
   ( readMind
   , initialMindWaveInfo
+  , columnize
   , MindWaveInfo (..)
   , Readings (..)
   , AsicEegPower (..)
   , ESense (..)
   , disconnect
+  , hoist
   ) where
 
-import GHC.Exts
 import           Average
 import qualified Control.Exception as Ex
-import           Control.Lens
+import           Control.Lens hiding (from, to)
 import           Control.Monad.State
 import           Data.Aeson
 import           Data.Bits
@@ -34,6 +46,7 @@ import           Data.Generics.Labels ()
 import           Data.IORef
 import           Data.Word
 import           Debug.Trace
+import           GHC.Exts
 import           GHC.Generics
 import           Generic.Data (Generically (..))
 import           System.Hardware.Serialport (SerialPort)
@@ -202,19 +215,31 @@ data MindWaveInfo = MindWaveInfo
   , last_message   :: !String
   , poor_signal    :: Word8
   , blink_strength :: Word8
-  , readings       :: Readings
+  , readings       :: Readings Average
   , unknown_code   :: String
   } deriving (Show, Generic)
 
-data Readings = Readings
-  { raw_value      :: Average Float
-  , esense         :: ESense
-  , asic_eeg_power :: AsicEegPower
-  }
-  deriving (Show, Generic)
-  deriving (Monoid, Semigroup) via (Generically Readings)
+#define INSTANCES(T) \
+deriving via (Generically (T [])) instance Monoid (T []); \
+deriving via (Generically (T Average)) instance Monoid (T Average); \
+deriving via (Generically (T Average)) instance Semigroup (T Average); \
+deriving via (Generically (T [])) instance Semigroup (T []); \
+deriving instance Read (T []); \
+deriving instance Read (T Average); \
+deriving instance Show (T []); \
+deriving instance Show (T Average);
 
-instance ToJSON Readings where
+
+data Readings f = Readings
+  { raw_value      :: f Float
+  , esense         :: ESense f
+  , asic_eeg_power :: AsicEegPower f
+  }
+  deriving (Generic)
+
+INSTANCES(Readings)
+
+instance ToJSON (Readings []) where
   toJSON (Readings r e a) =
     let Object e' = toJSON e
         Object a' = toJSON a
@@ -222,24 +247,70 @@ instance ToJSON Readings where
               <> a'
               <> fromList [("raw_value", toJSON r)]
 
-data ESense = ESense
-  { attention      :: Average Int
-  , meditation     :: Average Int
+data ESense f = ESense
+  { attention      :: f Int
+  , meditation     :: f Int
   }
-  deriving (Show, Generic, ToJSON)
-  deriving (Monoid, Semigroup) via (Generically ESense)
+  deriving (Generic)
 
-data AsicEegPower = AsicEegPower
-  { delta          :: Average Float
-  , theta          :: Average Float
-  , low_alpha      :: Average Float
-  , high_alpha     :: Average Float
-  , low_beta       :: Average Float
-  , high_beta      :: Average Float
-  , low_gamma      :: Average Float
-  , mid_gamma      :: Average Float
-  } deriving (Show, Generic, ToJSON)
-  deriving (Monoid, Semigroup) via (Generically AsicEegPower)
+INSTANCES(ESense)
+deriving instance ToJSON (ESense Average)
+deriving instance ToJSON (ESense [])
+
+data AsicEegPower f = AsicEegPower
+  { delta          :: f Float
+  , theta          :: f Float
+  , low_alpha      :: f Float
+  , high_alpha     :: f Float
+  , low_beta       :: f Float
+  , high_beta      :: f Float
+  , low_gamma      :: f Float
+  , mid_gamma      :: f Float
+  } deriving (Generic)
+
+INSTANCES(AsicEegPower)
+deriving instance ToJSON (AsicEegPower Average)
+deriving instance ToJSON (AsicEegPower [])
+
+class GHoist c m n tm tn where
+  ghoist :: (forall x. c x => m x -> n x) -> tm y -> tn y
+
+instance c a => GHoist c m n (K1 _1 (m a)) (K1 _1 (n a)) where
+  ghoist f (K1 m) = K1 $ f m
+
+instance GHoist c m n (K1 _1 z) (K1 _1 z) where
+  ghoist _ (K1 z) = K1 z
+
+instance GHoist c m [] (K1 _1 z) (K1 _1 [z]) where
+  ghoist _ (K1 z) = K1 [z]
+
+instance
+       ( Generic (t m)
+       , Generic (t n)
+       , GHoist c m n (Rep (t m)) (Rep (t n))
+       ) => GHoist c m n (K1 _1 (t m)) (K1 _1 (t n)) where
+  ghoist f (K1 m) = K1 $ hoist @c f m
+
+instance (GHoist c m n tm1 tn1, GHoist c m n tm2 tn2) => GHoist c m n (tm1 :*: tm2) (tn1 :*: tn2) where
+  ghoist f (tm1 :*: tm2) = ghoist @c @m @n f tm1 :*: ghoist @c @m @n f tm2
+
+instance (GHoist c m n tm tn) => GHoist c m n (M1 _1 _2 tm) (M1 _1 _2 tn) where
+  ghoist f (M1 tm) = M1 $ ghoist @c @m @n f tm
+
+hoist
+    :: forall c t m n
+     . ( Generic (t m)
+       , Generic (t n)
+       , GHoist c m n (Rep (t m)) (Rep (t n))
+       )
+    => (forall x. c x => m x -> n x)
+    -> t m
+    -> t n
+hoist f = to . ghoist @c @m @n f . from
+
+
+columnize :: [Readings Average] -> Readings []
+columnize = foldMap (hoist @HasDiv (pure . getAverage))
 
 
 -- | Before connecting to the MindWave, we have no information.
@@ -287,7 +358,7 @@ updateState mwp@(MindWaveDataRow excode code value) mwi =
    _ -> #unknown_code .~ show mwp
 
 -- | A helper function for extracting EEG specific values from the MindWave
-parseAsicEeg :: [Word8] -> AsicEegPower
+parseAsicEeg :: [Word8] -> AsicEegPower Average
 parseAsicEeg
   [ d1,  d2,  d3
   , t1,  t2,  t3
